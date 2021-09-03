@@ -7,7 +7,7 @@ Plot AWS Hosted NEXRAD Level 2 Data in an interactive GUI for any station in the
 # AWS_Radar_GUI_Tkinter_Outline
 Provides the outline and setup of the GUI interface.
 
-![Clustering](/)
+![GUI](Test_output.JPG)
 
 
 # Red Noise Test
