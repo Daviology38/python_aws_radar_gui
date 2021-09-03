@@ -15,6 +15,8 @@ Once this is done, click submit and the program will plot the first available ti
 
 **Note:** The program can take up to a minute to plot some of the data, working out a few bugs in the code currently.
 
+![GUI](Test_Output_savedimage.JPG)
+
 The *Save as* button can be used to save the currently displayed image as a png file.
 
 The *make gif* button will make a gif of all available times for the chosen radar site on the chosen date. **This process may take awhile as each image has to be made before the gif can be made. Images are saved to a temp directory and removed after the gif is made**
