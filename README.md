@@ -4,7 +4,7 @@ Plot AWS Hosted NEXRAD Level 2 Data in an interactive GUI for any station in the
 *David* *Coe*
 *UMass* *Lowell* *-* *2020*
 
-# kmeans_ci2
+# AWS_Radar_Tkinter_GUI_Outline
  Contains the **kmeans_ci** function which uses the calculated kmeans (using scikit-learn) to calculate the **Classifiability Index** (**CI**, Michaelangeli et al. 1995) to test how well data is correlated to the clustering (using the **Anomaly Correlation Coefficient** (**ACC**)). This function returns two lists: the cluster values (**K**) for the best clustering and the **CI** value (one item in the list) for the best clustering. The **CI** value can be plotted as shown below for each cluster to better understand the data.
 
 ![Clustering](/images/only_ci.png)
