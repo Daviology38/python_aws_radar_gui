@@ -1,13 +1,13 @@
-# python_aws_radar_gui
+# AWS Radar GUI Python
 Plot AWS Hosted NEXRAD Level 2 Data in an interactive GUI for any station in the U.S.
 
 *David* *Coe*
-*UMass* *Lowell* *-* *2020*
+*UMass* *Lowell* *-* *2021*
 
-# AWS_Radar_Tkinter_GUI_Outline
- Contains the **kmeans_ci** function which uses the calculated kmeans (using scikit-learn) to calculate the **Classifiability Index** (**CI**, Michaelangeli et al. 1995) to test how well data is correlated to the clustering (using the **Anomaly Correlation Coefficient** (**ACC**)). This function returns two lists: the cluster values (**K**) for the best clustering and the **CI** value (one item in the list) for the best clustering. The **CI** value can be plotted as shown below for each cluster to better understand the data.
+# AWS_Radar_GUI_Tkinter_Outline
+Provides the outline and setup of the GUI interface.
 
-![Clustering](/images/only_ci.png)
+![Clustering](/)
 
 
 # Red Noise Test
