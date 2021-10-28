@@ -14,9 +14,9 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import metpy.plots as mpplots
 import gc
 import tempfile
+from scipy import spatial
 
 global coords
-
 
 class App:
     def __init__(self, root):
@@ -51,6 +51,7 @@ class App:
         self.imagelist = []
         self.maxind = 0
         self.gif = None
+        self.station = None
 
         def new_map(fig, lon=-98.6, lat=39.8):
             # Create projection centered on the radar. This allows us to use x
@@ -100,69 +101,72 @@ class App:
                 )
             else:
                 temp_dir = tempfile.mkdtemp()
-                print(self.keys)
+
                 for i, key in enumerate(self.keys):
-                    # try:
-                    lla, ref, date, lon, lat = plot_data(self.keys[i])
+                    try:
+                        lla, ref, date, lon, lat = plot_data(self.keys[i], self.station)
 
-                    ref_norm, ref_cmap = mpplots.ctables.registry.get_with_steps(
-                        "NWSReflectivity", 5, 5
-                    )
-
-                    def new_map(fig, lon, lat):
-                        # Create projection centered on the radar. This allows us to use x
-                        # and y relative to the radar.
-                        proj = ccrs.LambertConformal(
-                            central_longitude=lon, central_latitude=lat
+                        ref_norm, ref_cmap = mpplots.ctables.registry.get_with_steps(
+                            "NWSReflectivity", 5, 5
                         )
 
-                        # New axes with the specified projection
-                        ax = fig.add_axes([0.02, 0.02, 0.96, 0.96], projection=proj)
+                        def new_map(fig, lon, lat):
+                            # Create projection centered on the radar. This allows us to use x
+                            # and y relative to the radar.
+                            proj = ccrs.LambertConformal(
+                                central_longitude=lon, central_latitude=lat
+                            )
 
-                        # Add coastlines and states
-                        ax.add_feature(
-                            cfeature.COASTLINE.with_scale("50m"), linewidth=2
+                            # New axes with the specified projection
+                            ax = fig.add_axes([0.02, 0.02, 0.96, 0.96], projection=proj)
+
+                            # Add coastlines and states
+                            ax.add_feature(
+                                cfeature.COASTLINE.with_scale("50m"), linewidth=2
+                            )
+                            ax.add_feature(cfeature.STATES.with_scale("50m"))
+
+                            return ax
+
+                        fig = plt.figure(figsize=(7.5, 7.5))
+                        ax = new_map(fig, lon, lat)
+                        # Set limits in lat/lon space
+                        ax.set_extent([lon - 5, lon + 5, lat - 3, lat + 3])
+                        ax.add_feature(cfeature.OCEAN.with_scale("50m"))
+                        ax.add_feature(cfeature.LAND.with_scale("50m"))
+
+                        mesh = ax.pcolormesh(
+                            lla[0][:],
+                            lla[1][:],
+                            ref,
+                            cmap=ref_cmap,
+                            norm=ref_norm,
+                            transform=ccrs.PlateCarree(),
+                            zorder=1,
                         )
-                        ax.add_feature(cfeature.STATES.with_scale("50m"))
 
-                        return ax
-
-                    fig = plt.figure(figsize=(7.5, 7.5))
-                    ax = new_map(fig, lon, lat)
-                    # Set limits in lat/lon space
-                    ax.set_extent([lon - 5, lon + 5, lat - 3, lat + 3])
-                    ax.add_feature(cfeature.OCEAN.with_scale("50m"))
-                    ax.add_feature(cfeature.LAND.with_scale("50m"))
-
-                    mesh = ax.pcolormesh(
-                        lla[0][:],
-                        lla[1][:],
-                        ref,
-                        cmap=ref_cmap,
-                        norm=ref_norm,
-                        transform=ccrs.PlateCarree(),
-                        zorder=1,
-                    )
-
-                    text = ax.text(
-                        0.7,
-                        0.02,
-                        date,
-                        transform=self.ax.transAxes,
-                        fontdict={"size": 10},
-                        bbox=dict(
-                            facecolor="white",
-                            edgecolor="white",
-                            boxstyle="round,pad=0.3",
-                        ),
-                    )
-                    plt.colorbar(mesh, ax=ax, shrink=0.72, label="dBZ")
-                    plt.savefig(temp_dir + "/" + str(count) + ".png")
-                    plt.close()
-                    gc.collect()
-                    count += 1
-                    # except:
-                    #     pass
+                        text = ax.text(
+                            0.7,
+                            0.02,
+                            date,
+                            transform=self.ax.transAxes,
+                            fontdict={"size": 10},
+                            bbox=dict(
+                                facecolor="white",
+                                edgecolor="white",
+                                boxstyle="round,pad=0.3",
+                            ),
+                        )
+                        plt.colorbar(mesh, ax=ax, shrink=0.72, label="dBZ")
+                        plt.savefig(temp_dir + "/" + str(count) + ".png")
+                        plt.close()
+                        gc.collect()
+                        del mesh
+                        del ref
+                        del lla
+                        count += 1
+                    except:
+                        count += 1
                 imagelist = os.listdir(temp_dir)
                 img, *imgs = [Image.open(temp_dir + "/" + f) for f in imagelist]
                 filename = filedialog.asksaveasfile(
@@ -270,14 +274,6 @@ class App:
         button.pack()
         button.place(x=90, y=0, width=80, height=25)
 
-        # self.image=tk.Label(root)
-        # ft = tkFont.Font(family='Times',size=10)
-        # self.image["font"] = ft
-        # self.image["fg"] = "#333333"
-        # self.image["justify"] = "center"
-        # self.image["text"] = "label"
-        # self.image.place(x=170,y=20,width=712,height=500)
-
         # Create Dropdown menu
         locs = pyart.io.nexrad_common.NEXRAD_LOCATIONS
         stationlist = tk.Button(
@@ -350,108 +346,120 @@ class App:
     def back_command(self, index):
         self.index -= 1
         if self.index < 0:
-            self.index = len(self.imagelist) - 1
-        lla, ref, date, lon, lat = plot_data(self.keys[self.index])
-        self.ax.clear()
-        self.fig.clf()
-        ref_norm, ref_cmap = mpplots.ctables.registry.get_with_steps(
-            "NWSReflectivity", 5, 5
-        )
+            self.index = len(self.keys) - 1
+        try:
+            lla, ref, date, lon, lat = plot_data(self.keys[self.index], self.station)
+            self.ax.clear()
+            self.fig.clf()
+            ref_norm, ref_cmap = mpplots.ctables.registry.get_with_steps(
+                "NWSReflectivity", 5, 5
+            )
 
-        def new_map(fig, lon, lat):
-            # Create projection centered on the radar. This allows us to use x
-            # and y relative to the radar.
-            proj = ccrs.LambertConformal(central_longitude=lon, central_latitude=lat)
+            def new_map(fig, lon, lat):
+                # Create projection centered on the radar. This allows us to use x
+                # and y relative to the radar.
+                proj = ccrs.LambertConformal(central_longitude=lon, central_latitude=lat)
 
-            # New axes with the specified projection
-            ax = fig.add_axes([0.02, 0.02, 0.96, 0.96], projection=proj)
+                # New axes with the specified projection
+                ax = fig.add_axes([0.02, 0.02, 0.96, 0.96], projection=proj)
 
-            # Add coastlines and states
-            ax.add_feature(cfeature.COASTLINE.with_scale("50m"), linewidth=2)
-            ax.add_feature(cfeature.STATES.with_scale("50m"))
+                # Add coastlines and states
+                ax.add_feature(cfeature.COASTLINE.with_scale("50m"), linewidth=2)
+                ax.add_feature(cfeature.STATES.with_scale("50m"))
 
-            return ax
+                return ax
 
-        self.ax = new_map(self.fig, lon, lat)
-        # Set limits in lat/lon space
-        self.ax.set_extent([lon - 5, lon + 5, lat - 3, lat + 3])
-        self.ax.add_feature(cfeature.OCEAN.with_scale("50m"))
-        self.ax.add_feature(cfeature.LAND.with_scale("50m"))
+            self.ax = new_map(self.fig, lon, lat)
+            # Set limits in lat/lon space
+            self.ax.set_extent([lon - 5, lon + 5, lat - 3, lat + 3])
+            self.ax.add_feature(cfeature.OCEAN.with_scale("50m"))
+            self.ax.add_feature(cfeature.LAND.with_scale("50m"))
 
-        mesh = self.ax.pcolormesh(
-            lla[0][:],
-            lla[1][:],
-            ref,
-            cmap=ref_cmap,
-            norm=ref_norm,
-            transform=ccrs.PlateCarree(),
-            zorder=1,
-        )
+            mesh = self.ax.pcolormesh(
+                lla[0][:],
+                lla[1][:],
+                ref,
+                cmap=ref_cmap,
+                norm=ref_norm,
+                transform=ccrs.PlateCarree(),
+                zorder=1,
+            )
 
-        text = self.ax.text(
-            1.5,
-            0.5,
-            date,
-            transform=self.ax.transAxes,
-            fontdict={"size": 10},
-            bbox=dict(facecolor="white", edgecolor="white", boxstyle="round,pad=0.3"),
-        )
-        plt.colorbar(mesh, ax=self.ax, shrink=0.72, label="dBZ")
-        self.canvas.draw()
-        gc.collect()
+            text = self.ax.text(
+                0.7,
+                0.02,
+                date,
+                transform=self.ax.transAxes,
+                fontdict={"size": 10},
+                bbox=dict(facecolor="white", edgecolor="white", boxstyle="round,pad=0.3"),
+            )
+            plt.colorbar(mesh, ax=self.ax, shrink=0.72, label="dBZ")
+            self.canvas.draw()
+            gc.collect()
+            del ref
+            del lla
+            del mesh
+        except:
+            self.back_command(self.index)
 
     def forward_command(self, index):
         self.index += 1
-        if self.index == len(self.imagelist):
+        if self.index == len(self.keys):
             self.index = 0
-        lla, ref, date, lon, lat = plot_data(self.keys[self.index])
-        self.ax.clear()
-        self.fig.clf()
-        ref_norm, ref_cmap = mpplots.ctables.registry.get_with_steps(
-            "NWSReflectivity", 5, 5
-        )
+        try:
+            lla, ref, date, lon, lat = plot_data(self.keys[self.index], self.station)
+            self.ax.clear()
+            self.fig.clf()
+            ref_norm, ref_cmap = mpplots.ctables.registry.get_with_steps(
+                "NWSReflectivity", 5, 5
+            )
 
-        def new_map(fig, lon, lat):
-            # Create projection centered on the radar. This allows us to use x
-            # and y relative to the radar.
-            proj = ccrs.LambertConformal(central_longitude=lon, central_latitude=lat)
+            def new_map(fig, lon, lat):
+                # Create projection centered on the radar. This allows us to use x
+                # and y relative to the radar.
+                proj = ccrs.LambertConformal(central_longitude=lon, central_latitude=lat)
 
-            # New axes with the specified projection
-            ax = fig.add_axes([0.02, 0.02, 0.96, 0.96], projection=proj)
+                # New axes with the specified projection
+                ax = fig.add_axes([0.02, 0.02, 0.96, 0.96], projection=proj)
 
-            # Add coastlines and states
-            ax.add_feature(cfeature.COASTLINE.with_scale("50m"), linewidth=2)
-            ax.add_feature(cfeature.STATES.with_scale("50m"))
+                # Add coastlines and states
+                ax.add_feature(cfeature.COASTLINE.with_scale("50m"), linewidth=2)
+                ax.add_feature(cfeature.STATES.with_scale("50m"))
 
-            return ax
+                return ax
 
-        self.ax = new_map(self.fig, lon, lat)
-        # Set limits in lat/lon space
-        self.ax.set_extent([lon - 5, lon + 5, lat - 3, lat + 3])
-        self.ax.add_feature(cfeature.OCEAN.with_scale("50m"))
-        self.ax.add_feature(cfeature.LAND.with_scale("50m"))
+            self.ax = new_map(self.fig, lon, lat)
+            # Set limits in lat/lon space
+            self.ax.set_extent([lon - 5, lon + 5, lat - 3, lat + 3])
+            self.ax.add_feature(cfeature.OCEAN.with_scale("50m"))
+            self.ax.add_feature(cfeature.LAND.with_scale("50m"))
 
-        mesh = self.ax.pcolormesh(
-            lla[0][:],
-            lla[1][:],
-            ref,
-            cmap=ref_cmap,
-            norm=ref_norm,
-            transform=ccrs.PlateCarree(),
-            zorder=1,
-        )
+            mesh = self.ax.pcolormesh(
+                lla[0][:],
+                lla[1][:],
+                ref,
+                cmap=ref_cmap,
+                norm=ref_norm,
+                transform=ccrs.PlateCarree(),
+                zorder=1,
+            )
 
-        text = self.ax.text(
-            0.7,
-            0.02,
-            date,
-            transform=self.ax.transAxes,
-            fontdict={"size": 10},
-            bbox=dict(facecolor="white", edgecolor="white", boxstyle="round,pad=0.3"),
-        )
-        plt.colorbar(mesh, ax=self.ax, shrink=0.72, label="dBZ")
-        self.canvas.draw()
-        gc.collect()
+            text = self.ax.text(
+                0.7,
+                0.02,
+                date,
+                transform=self.ax.transAxes,
+                fontdict={"size": 10},
+                bbox=dict(facecolor="white", edgecolor="white", boxstyle="round,pad=0.3"),
+            )
+            plt.colorbar(mesh, ax=self.ax, shrink=0.72, label="dBZ")
+            self.canvas.draw()
+            gc.collect()
+            del mesh
+            del ref
+            del lla
+        except:
+            self.forward_command(self.index)
 
     def GButton_132_command(self, stat, dat, st, et):
         # Check to see if text is changed
@@ -490,8 +498,18 @@ class App:
             y = 1
             z = 1
         if y == 1 and z == 1:
-            self.keys = get_data(coords, dat, st, et)
-            lla, ref, date, lon, lat = plot_data(self.keys[self.index])
+            locs = pyart.io.nexrad_common.NEXRAD_LOCATIONS
+            locs2 = [loc for loc in locs if loc[0] == "T"]
+            for unwanted_key in locs2: del locs[unwanted_key]
+
+            vals = [(locs[l]['lat'], locs[l]['lon']) for l in locs]
+            tree = spatial.KDTree(vals)
+            v, ind = tree.query([(coords[0][1], coords[0][0])])
+            self.station = list(locs.keys())[ind[0]]
+
+            self.keys = get_data(self.station, dat, st, et)
+            lla, ref, date, lon, lat = plot_data(self.keys[self.index], self.station)
+
             self.ax.clear()
             self.fig.clf()
             ref_norm, ref_cmap = mpplots.ctables.registry.get_with_steps(
@@ -543,7 +561,9 @@ class App:
             plt.colorbar(mesh, ax=self.ax, shrink=0.72, label="dBZ")
             self.canvas.draw()
             gc.collect()
-            self.index += 1
+            del ref
+            del lla
+            del mesh
 
         else:
             tk.messagebox.showerror(title="Error", message="Try Again!")

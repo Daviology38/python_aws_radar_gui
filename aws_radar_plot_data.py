@@ -8,74 +8,37 @@ import tempfile
 import gc
 import metpy.plots as mpplots
 import xarray as xr
+from metpy.io import Level2File
 
 
-def plot_data(datasets):
+def plot_data(datasets, station):
 
-    vars_to_drop = [
-        "Reflectivity_HI",
-        "RadialVelocity_HI",
-        "RadialVelocity",
-        "RadialVelocity_HI",
-        "SpectrumWidth_HI",
-        "SpectrumWidth",
-        "DifferentialReflectivity_HI",
-        "DifferentialReflectivity",
-        "CorrelationCoefficient_HI",
-        "CorrelationCoefficient",
-        "DifferentialPhase_HI",
-        "DifferentialPhase",
-    ]
     locs = pyart.io.nexrad_common.NEXRAD_LOCATIONS
 
-    count = 0
-
-    ref_norm, ref_cmap = mpplots.ctables.registry.get_with_steps(
-        "NWSReflectivity", 5, 5
-    )
-
-    def new_map(fig, lon, lat):
-        # Create projection centered on the radar. This allows us to use x
-        # and y relative to the radar.
-        proj = ccrs.LambertConformal(central_longitude=lon, central_latitude=lat)
-
-        # New axes with the specified projection
-        ax = fig.add_axes([0.02, 0.02, 0.96, 0.96], projection=proj)
-
-        # Add coastlines and states
-        ax.add_feature(cfeature.COASTLINE.with_scale("50m"), linewidth=2)
-        ax.add_feature(cfeature.STATES.with_scale("50m"))
-
-        return ax
-
-    file = datasets
-
-    data = xr.open_dataset(
-        file.access_urls["OPENDAP"], decode_times=False, drop_variables=vars_to_drop
-    )
-    station = data.attrs["Station"]
-    loc = station
-
-    lat = locs[loc]["lat"]
-    lon = locs[loc]["lon"]
-    elev = locs[loc]["elev"]
-
+    f = Level2File(datasets)
     sweep = 0
-    ref = data.variables["Reflectivity"].values[0, :]
-    print(data.variables["Reflectivity"].values.shape)
-    rng = data.variables["distanceR"].values[:]
-    az = data.variables["azimuthR"].values[0, :]
-    az = az[:, None]
-    ele = data.variables["elevationR"].values[0, :]
-    ele = ele[:, None]
+    # First item in ray is header, which has azimuth angle
+    az = np.array([ray[0].az_angle for ray in f.sweeps[sweep]])
 
-    cx, cy, cz = pyart.core.antenna_to_cartesian(rng / 1000, az, ele)
-    lla = pyart.core.cartesian_to_geographic_aeqd(cx, cy, lon, lat, R=6370997.0)
+    ref = f.sweeps[sweep][0][4][b'REF'][0]
+    ref_range = np.arange(ref.num_gates) * ref.gate_width + ref.first_gate
+    ref = np.array([ray[4][b'REF'][1] for ray in f.sweeps[sweep]])
+
+    lat = locs[station]["lat"]
+    lon = locs[station]["lon"]
+
+    # Convert az,range to x,y
+    xlocs = ref_range * np.sin(np.deg2rad(az[:, np.newaxis])) * 1000
+    ylocs = ref_range * np.cos(np.deg2rad(az[:, np.newaxis])) * 1000
+
+
+    #cx, cy, cz = pyart.core.antenna_to_cartesian(rng / 1000, data.variables["azimuthR"].values[0, :][:, None], data.variables["elevationR"].values[0, :][:, None])
+    lla = pyart.core.cartesian_to_geographic_aeqd(xlocs, ylocs, lon, lat, R=6370997.0)
 
     return (
         lla,
         ref,
-        data.time_coverage_start,
-        data.StationLongitude,
-        data.StationLatitude,
+        f.dt.strftime("%m-%d-%Y %H:%M UTC"),
+        lon,
+        lat
     )
